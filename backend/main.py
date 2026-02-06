@@ -17,7 +17,7 @@ app = FastAPI(title="Trading Agent Orchestrator")
 # --- ADD THIS BLOCK ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Explicitly allow the frontend
+    allow_origins=["*"],  # Explicitly allow the frontend
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
