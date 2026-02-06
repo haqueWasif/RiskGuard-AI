@@ -1,11 +1,11 @@
 import pandas as pd
-import pandas_ta as ta  # Requires: pip install pandas_ta
+import ta # The new stable library
 import numpy as np
 
 class IndicatorService:
     """
     Computes the 'Safe Metrics' used for structural analysis.
-    NO predictive models. NO forecasting.
+    Uses the 'ta' library for stability on Railway.
     """
 
     def calculate_metrics(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -13,71 +13,70 @@ class IndicatorService:
         Applies technical indicators to the OHLCV DataFrame.
         """
         # Ensure sufficient data depth
-        if len(df) < 50:
-            # We relax the 200 limit slightly for testing, but warn
-            print(f"Warning: Data depth {len(df)} is low. EMA-200 may be unstable.")
-        
         if len(df) < 14:
              raise ValueError("Insufficient data. Need at least 14 candles.")
 
         # --- 1. Trend Strength (ADX) ---
         # Formula: Average Directional Index (14-period)
-        # pandas_ta returns 'ADX_14', 'DMP_14', 'DMN_14'
-        adx_df = df.ta.adx(length=14)
-        if adx_df is not None and 'ADX_14' in adx_df.columns:
-            df['ADX'] = adx_df['ADX_14']
-        else:
+        # We catch warnings because ADX can be fussy with mostly-flat data
+        try:
+            adx_indicator = ta.trend.ADXIndicator(
+                high=df['high'], 
+                low=df['low'], 
+                close=df['close'], 
+                window=14
+            )
+            df['ADX'] = adx_indicator.adx()
+        except Exception:
             df['ADX'] = 0 # Fallback
 
         # --- 2. Trend Bias (EMA Delta) ---
         # Formula: (Close - EMA_200) / EMA_200
-        df['EMA_200'] = df.ta.ema(length=200)
-        # Handle case where data is too short for EMA 200 (fill with Close or SMA)
+        ema_indicator = ta.trend.EMAIndicator(close=df['close'], window=200)
+        df['EMA_200'] = ema_indicator.ema_indicator()
+        
+        # Handle case where data is too short for EMA 200
         if df['EMA_200'].isnull().all():
-             df['EMA_200'] = df['close'] # Fallback to prevent crash
+             df['EMA_200'] = df['close'] # Fallback
         
         df['EMA_Delta'] = (df['close'] - df['EMA_200']) / df['EMA_200']
 
         # --- 3. Volatility Norm (ATR) ---
         # Formula: Average True Range (14-period)
-        df['ATR'] = df.ta.atr(length=14)
+        atr_indicator = ta.volatility.AverageTrueRange(
+            high=df['high'], 
+            low=df['low'], 
+            close=df['close'], 
+            window=14
+        )
+        df['ATR'] = atr_indicator.average_true_range()
 
         # --- 4. Volatility Regime (BBW_Pct) ---
-        # Formula: (BB_Upper - BB_Lower) / BB_Mid
         # Standard settings (20, 2)
-        bb_df = df.ta.bbands(length=20, std=2)
+        bb_indicator = ta.volatility.BollingerBands(
+            close=df['close'], 
+            window=20, 
+            window_dev=2
+        )
         
-        # --- FIX: Dynamic Column Finding ---
-        # Instead of guessing 'BBU_20_2.0', we look for columns starting with BBU/BBL/BBM
-        if bb_df is not None:
-            # Find the actual column names returned by pandas_ta
-            bbu_col = next((c for c in bb_df.columns if c.startswith('BBU')), None)
-            bbl_col = next((c for c in bb_df.columns if c.startswith('BBL')), None)
-            bbm_col = next((c for c in bb_df.columns if c.startswith('BBM')), None)
-
-            if bbu_col and bbl_col and bbm_col:
-                df['BB_Upper'] = bb_df[bbu_col]
-                df['BB_Lower'] = bb_df[bbl_col]
-                df['BB_Mid']   = bb_df[bbm_col]
-                
-                # Calculate Width % strictly according to spec formula
-                # Avoid division by zero
-                df['BBW_Pct'] = (df['BB_Upper'] - df['BB_Lower']) / df['BB_Mid'].replace(0, np.nan)
-            else:
-                 # Fallback if calculation failed
-                 df['BBW_Pct'] = 0
-        else:
-             df['BBW_Pct'] = 0
+        df['BB_Upper'] = bb_indicator.bollinger_hband()
+        df['BB_Lower'] = bb_indicator.bollinger_lband()
+        df['BB_Mid']   = bb_indicator.bollinger_mavg()
+        
+        # Calculate Width % (Avoid division by zero)
+        df['BBW_Pct'] = (df['BB_Upper'] - df['BB_Lower']) / df['BB_Mid'].replace(0, np.nan)
+        df['BBW_Pct'] = df['BBW_Pct'].fillna(0)
 
         # --- 5. Momentum (RSI) ---
         # Formula: Relative Strength Index (14-period)
-        df['RSI'] = df.ta.rsi(length=14)
+        rsi_indicator = ta.momentum.RSIIndicator(close=df['close'], window=14)
+        df['RSI'] = rsi_indicator.rsi()
 
         # --- 6. Volume Delta ---
         # Formula: Volume / SMA_Volume(20)
+        # 'ta' usually works on price, so we do this one manually with pandas (safer)
         df['Vol_SMA_20'] = df['volume'].rolling(window=20).mean()
         
-        # Handle Division by Zero
         df['Volume_Delta'] = df.apply(
             lambda row: row['volume'] / row['Vol_SMA_20'] if row['Vol_SMA_20'] > 0 else 0, 
             axis=1
