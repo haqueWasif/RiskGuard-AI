@@ -1,8 +1,1 @@
-fastapi
-uvicorn
-pandas
-pandas_ta
-ccxt
-requests
-pydantic
-numpy
+
