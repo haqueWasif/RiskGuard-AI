@@ -3,6 +3,7 @@ uvicorn
 pandas
 pandas_ta
 ccxt
-requests
+scipy           
+numpy<2.0.0    
 pydantic
-numpy
+python-multipart
