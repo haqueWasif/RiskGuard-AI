@@ -14,7 +14,7 @@ export default function Home() {
     setLoading(true);
     try {
       // Connect to backend API
-      const response = await axios.post('http://localhost:8000/api/v1/audit', data);
+      const response = await axios.post('https://web-production-2c287.up.railway.app/api/v1/audit', data);
       
       // Artificial delay to simulate "Calculating..." [cite: 361]
       setTimeout(() => {
