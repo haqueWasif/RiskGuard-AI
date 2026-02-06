@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 pandas
-pandas_ta==0.3.14b
+pandas_ta
 ccxt
 scipy           
 numpy<2.0.0    
